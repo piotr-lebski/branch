@@ -31,6 +31,10 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: cargo fmt --check
 
+      - name: prettier
+        if: matrix.os == 'ubuntu-latest'
+        run: npx --yes prettier --check "**/*.md"
+
       - name: clippy
         if: matrix.os == 'ubuntu-latest'
         run: cargo clippy --all-targets -- -D warnings
