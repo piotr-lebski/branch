@@ -1,0 +1,18 @@
+# Rust build output
+target/
+
+# Editor and IDE
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+*~
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Stray build artifacts
+/*.rlib
+
