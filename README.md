@@ -2,7 +2,7 @@
 
 [![Release](https://img.shields.io/github/v/release/piotr-lebski/branch?display_name=tag&sort=semver)](https://github.com/piotr-lebski/branch/releases)
 [![License](https://img.shields.io/github/license/piotr-lebski/branch)](https://github.com/piotr-lebski/branch/blob/main/LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-2ea44f)](https://github.com/piotr-lebski/branch/actions/workflows/ci.yml)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-2ea44f)](https://github.com/piotr-lebski/branch/actions/workflows/ci.yml)
 
 An interactive git branch and worktree navigator. Browse local or remote branches and worktrees, check out branches, cd
 into worktrees, and delete what you no longer need — all from a single keyboard-driven picker.
@@ -24,6 +24,20 @@ curl -fsSL https://raw.githubusercontent.com/piotr-lebski/branch/main/install.sh
 ```
 
 Run `curl … | bash -s -- --help` to see all options.
+
+### Windows (PowerShell)
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/piotr-lebski/branch/main/install.ps1 | iex
+```
+
+Installs to `$env:LOCALAPPDATA\branch\bin` and updates your PowerShell profile.
+To pass flags, download and run the script directly:
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/piotr-lebski/branch/main/install.ps1 -OutFile install.ps1
+.\install.ps1 -Version v0.1.0 -NoShellIntegration
+```
 
 ### Build from source
 
