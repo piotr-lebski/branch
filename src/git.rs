@@ -93,8 +93,13 @@ pub fn delete_branch(name: &str, force: bool, cwd: Option<&Path>) -> Result<(), 
     run_git_in(&["branch", flag, name], cwd).map(|_| ())
 }
 
-pub fn remove_worktree(path: &str, cwd: Option<&Path>) -> Result<(), String> {
-    run_git_in(&["worktree", "remove", path], cwd).map(|_| ())
+pub fn remove_worktree(path: &str, force: bool, cwd: Option<&Path>) -> Result<(), String> {
+    let args = if force {
+        vec!["worktree", "remove", "--force", path]
+    } else {
+        vec!["worktree", "remove", path]
+    };
+    run_git_in(&args, cwd).map(|_| ())
 }
 
 #[cfg(test)]
@@ -380,7 +385,29 @@ mod tests {
             .current_dir(&path)
             .output()
             .unwrap();
-        remove_worktree(&wt_path, Some(&path)).unwrap();
+        remove_worktree(&wt_path, false, Some(&path)).unwrap();
+        let wts = list_worktrees(Some(&path)).unwrap();
+        assert!(wts.is_empty());
+    }
+
+    #[test]
+    fn remove_worktree_force_removes_dirty_worktree() {
+        let (_dir, path) = setup_repo();
+        let wt_dir = tempfile::tempdir().unwrap();
+        let wt_path = wt_dir.path().to_str().unwrap().to_string();
+        Command::new("git")
+            .args(["worktree", "add", "-b", "feat", &wt_path])
+            .current_dir(&path)
+            .output()
+            .unwrap();
+
+        std::fs::write(Path::new(&wt_path).join("f"), "dirty").unwrap();
+        std::fs::write(Path::new(&wt_path).join("untracked"), "x").unwrap();
+
+        let result = remove_worktree(&wt_path, false, Some(&path));
+        assert!(result.is_err(), "dirty worktree removal should fail");
+
+        remove_worktree(&wt_path, true, Some(&path)).unwrap();
         let wts = list_worktrees(Some(&path)).unwrap();
         assert!(wts.is_empty());
     }

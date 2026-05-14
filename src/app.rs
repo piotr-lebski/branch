@@ -146,6 +146,51 @@ fn delete_branch_with_prompt(name: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn can_force_remove_worktree(error: &str) -> bool {
+    error.contains("use --force to delete it")
+        || error.contains("contains modified or untracked files")
+}
+
+fn remove_worktree_with_prompt(name: &str, path: &str) -> Result<(), String> {
+    match crate::git::remove_worktree(path, false, None) {
+        Ok(()) => {
+            eprintln!("Removed worktree: {path}");
+            let also_delete_branch = dialoguer::Confirm::new()
+                .with_prompt(format!("Also delete branch '{name}'?"))
+                .default(false)
+                .interact()
+                .map_err(|e| e.to_string())?;
+            if also_delete_branch {
+                delete_branch_with_prompt(name)?;
+            }
+        }
+        Err(e) if can_force_remove_worktree(&e) => {
+            let force = dialoguer::Confirm::new()
+                .with_prompt(format!(
+                    "Worktree '{path}' has uncommitted changes. Force delete?"
+                ))
+                .default(false)
+                .interact()
+                .map_err(|e| e.to_string())?;
+            if force {
+                crate::git::remove_worktree(path, true, None)?;
+                eprintln!("Force removed worktree: {path}");
+
+                let also_delete_branch = dialoguer::Confirm::new()
+                    .with_prompt(format!("Also delete branch '{name}'?"))
+                    .default(false)
+                    .interact()
+                    .map_err(|e| e.to_string())?;
+                if also_delete_branch {
+                    delete_branch_with_prompt(name)?;
+                }
+            }
+        }
+        Err(e) => eprintln!("Error removing worktree: {e}"),
+    }
+    Ok(())
+}
+
 fn handle_delete(item: &Item) -> Result<(), String> {
     match item {
         Item::Branch { name, is_current } => {
@@ -157,20 +202,7 @@ fn handle_delete(item: &Item) -> Result<(), String> {
             }
             delete_branch_with_prompt(name)?;
         }
-        Item::Worktree { name, path } => match crate::git::remove_worktree(path, None) {
-            Ok(()) => {
-                eprintln!("Removed worktree: {path}");
-                let also_delete_branch = dialoguer::Confirm::new()
-                    .with_prompt(format!("Also delete branch '{name}'?"))
-                    .default(false)
-                    .interact()
-                    .map_err(|e| e.to_string())?;
-                if also_delete_branch {
-                    delete_branch_with_prompt(name)?;
-                }
-            }
-            Err(e) => eprintln!("Error removing worktree: {e}"),
-        },
+        Item::Worktree { name, path } => remove_worktree_with_prompt(name, path)?,
         Item::Header => {}
     }
     Ok(())
@@ -289,5 +321,15 @@ mod tests {
             positions.windows(2).all(|w| w[0] == w[1]),
             "worktree paths should start at the same column: {positions:?}"
         );
+    }
+
+    #[test]
+    fn detect_force_removable_worktree_error() {
+        assert!(can_force_remove_worktree(
+            "fatal: 'C:\\\\repo\\\\wt' contains modified or untracked files, use --force to delete it"
+        ));
+        assert!(!can_force_remove_worktree(
+            "fatal: cannot remove the current working tree"
+        ));
     }
 }
