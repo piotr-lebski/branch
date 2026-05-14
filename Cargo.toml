@@ -1,6 +1,6 @@
 [package]
 name = "git-branch"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2021"
 authors = ["Piotr Łebski <nuclear.refactor@proton.me>"]
 description = "Interactive git branch and worktree navigator"
