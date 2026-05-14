@@ -1,3 +1,4 @@
+use std::fs;
 use std::io::Write;
 use std::process::{Command, Stdio};
 
@@ -30,11 +31,15 @@ pub fn select(items: &[String]) -> Result<Option<usize>, String> {
 fn select_with_fzf(items: &[String]) -> Result<Option<usize>, String> {
     // Prefix each item with its 0-based index and a tab.
     // fzf displays from field 2 onwards (hiding the index), but outputs the full line.
-    let indexed: Vec<String> = items
+    let mut indexed: Vec<String> = items
         .iter()
         .enumerate()
         .map(|(i, s)| format!("{i}\t{s}"))
         .collect();
+
+    if should_reverse_input_for_fzf() {
+        indexed.reverse();
+    }
 
     let mut child = Command::new("fzf")
         .args(["--ansi", "--delimiter=\t", "--with-nth=2.."])
@@ -76,9 +81,122 @@ fn select_builtin(items: &[String]) -> Result<Option<usize>, String> {
         .map_err(|e| e.to_string())
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FzfLayout {
+    Default,
+    Reverse,
+    ReverseList,
+}
+
+fn should_reverse_input_for_fzf() -> bool {
+    let mut config = FzfConfig {
+        layout: FzfLayout::Default,
+        tac: false,
+    };
+
+    if let Ok(path) = std::env::var("FZF_DEFAULT_OPTS_FILE") {
+        if let Ok(contents) = fs::read_to_string(path) {
+            apply_fzf_options(&mut config, &contents);
+        }
+    }
+
+    if let Ok(opts) = std::env::var("FZF_DEFAULT_OPTS") {
+        apply_fzf_options(&mut config, &opts);
+    }
+
+    matches!(config.layout, FzfLayout::Default) ^ config.tac
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct FzfConfig {
+    layout: FzfLayout,
+    tac: bool,
+}
+
+fn apply_fzf_options(config: &mut FzfConfig, options: &str) {
+    let tokens = tokenize_fzf_options(options);
+    let mut i = 0;
+    while i < tokens.len() {
+        match tokens[i].as_str() {
+            "--reverse" => config.layout = FzfLayout::Reverse,
+            "--tac" => config.tac = true,
+            "--no-tac" => config.tac = false,
+            "--layout" => {
+                if let Some(layout) = tokens.get(i + 1).and_then(|value| parse_fzf_layout(value)) {
+                    config.layout = layout;
+                    i += 1;
+                }
+            }
+            token => {
+                if let Some(value) = token.strip_prefix("--layout=") {
+                    if let Some(layout) = parse_fzf_layout(value) {
+                        config.layout = layout;
+                    }
+                }
+            }
+        }
+        i += 1;
+    }
+}
+
+fn parse_fzf_layout(value: &str) -> Option<FzfLayout> {
+    match value {
+        "default" => Some(FzfLayout::Default),
+        "reverse" => Some(FzfLayout::Reverse),
+        "reverse-list" => Some(FzfLayout::ReverseList),
+        _ => None,
+    }
+}
+
+fn tokenize_fzf_options(options: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    for line in options.lines() {
+        if line.trim_start().starts_with('#') {
+            continue;
+        }
+
+        let mut current = String::new();
+        let mut quote = None;
+        let mut escaped = false;
+
+        for ch in line.chars() {
+            if escaped {
+                current.push(ch);
+                escaped = false;
+                continue;
+            }
+
+            match ch {
+                '\\' => escaped = true,
+                '"' | '\'' => {
+                    if quote == Some(ch) {
+                        quote = None;
+                    } else if quote.is_none() {
+                        quote = Some(ch);
+                    } else {
+                        current.push(ch);
+                    }
+                }
+                c if c.is_whitespace() && quote.is_none() => {
+                    if !current.is_empty() {
+                        tokens.push(std::mem::take(&mut current));
+                    }
+                }
+                _ => current.push(ch),
+            }
+        }
+
+        if !current.is_empty() {
+            tokens.push(current);
+        }
+    }
+    tokens
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
     use std::sync::Mutex;
 
     // Mutex to ensure only one test manipulates BRANCH_SELECT_FIRST at a time
@@ -118,5 +236,81 @@ mod tests {
         let result = select(&items);
         std::env::remove_var("BRANCH_SELECT_FIRST");
         assert_eq!(result.unwrap(), None);
+    }
+
+    #[test]
+    fn default_layout_reverses_input_for_fzf() {
+        let mut config = FzfConfig {
+            layout: FzfLayout::Default,
+            tac: false,
+        };
+        apply_fzf_options(&mut config, "");
+        assert!(matches!(config.layout, FzfLayout::Default));
+        assert!(matches!(config.layout, FzfLayout::Default) ^ config.tac);
+    }
+
+    #[test]
+    fn reverse_layout_keeps_input_order_for_fzf() {
+        let mut config = FzfConfig {
+            layout: FzfLayout::Default,
+            tac: false,
+        };
+        apply_fzf_options(&mut config, "--layout=reverse");
+        assert!(!matches!(config.layout, FzfLayout::Default) ^ config.tac);
+    }
+
+    #[test]
+    fn reverse_list_layout_keeps_input_order_for_fzf() {
+        let mut config = FzfConfig {
+            layout: FzfLayout::Default,
+            tac: false,
+        };
+        apply_fzf_options(&mut config, "--layout reverse-list");
+        assert!(!matches!(config.layout, FzfLayout::Default) ^ config.tac);
+    }
+
+    #[test]
+    fn tac_flips_the_reversal_rule_for_fzf() {
+        let mut config = FzfConfig {
+            layout: FzfLayout::Default,
+            tac: false,
+        };
+        apply_fzf_options(&mut config, "--tac");
+        assert!(!matches!(config.layout, FzfLayout::Default) ^ config.tac);
+
+        let mut reverse_config = FzfConfig {
+            layout: FzfLayout::Default,
+            tac: false,
+        };
+        apply_fzf_options(&mut reverse_config, "--layout=reverse --tac");
+        assert!(!matches!(reverse_config.layout, FzfLayout::Default));
+        assert!(reverse_config.tac);
+        assert!(matches!(reverse_config.layout, FzfLayout::Default) ^ reverse_config.tac);
+    }
+
+    #[test]
+    fn opts_file_is_applied_before_env_opts() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let path = std::env::temp_dir().join("branch-fzf-opts-test");
+        fs::write(&path, "--layout=default\n").unwrap();
+
+        std::env::set_var("FZF_DEFAULT_OPTS_FILE", &path);
+        std::env::set_var("FZF_DEFAULT_OPTS", "--layout=reverse");
+
+        assert!(!should_reverse_input_for_fzf());
+
+        std::env::remove_var("FZF_DEFAULT_OPTS_FILE");
+        std::env::remove_var("FZF_DEFAULT_OPTS");
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn tokenize_fzf_options_skips_comment_lines() {
+        let tokens =
+            tokenize_fzf_options("# comment\n--layout=reverse-list\n--color=bg:#112233 --tac");
+        assert_eq!(
+            tokens,
+            vec!["--layout=reverse-list", "--color=bg:#112233", "--tac"]
+        );
     }
 }
