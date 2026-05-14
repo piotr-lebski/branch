@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/piotr-lebski/branch/compare/v0.2.0...v0.2.1) (2026-05-14)
+
+
+### Bug Fixes
+
+* header placement in fzf ([66701c2](https://github.com/piotr-lebski/branch/commit/66701c29b41a73931d0643b9357854859f3b65fe))
+
 ## [0.2.0](https://github.com/piotr-lebski/branch/compare/v0.1.0...v0.2.0) (2026-05-14)
 
 
