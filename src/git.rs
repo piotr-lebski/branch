@@ -7,6 +7,18 @@ pub struct Worktree {
     pub path: String,
 }
 
+fn normalize_git_path(path: &str) -> String {
+    #[cfg(windows)]
+    {
+        path.replace('/', "\\")
+    }
+
+    #[cfg(not(windows))]
+    {
+        path.to_string()
+    }
+}
+
 fn run_git_in(args: &[&str], dir: Option<&Path>) -> Result<String, String> {
     let mut cmd = Command::new("git");
     cmd.args(args);
@@ -50,7 +62,7 @@ pub fn list_worktrees(cwd: Option<&Path>) -> Result<Vec<Worktree>, String> {
         let mut branch_name = None;
         for line in block.lines() {
             if let Some(p) = line.strip_prefix("worktree ") {
-                path = Some(p.to_string());
+                path = Some(normalize_git_path(p));
             } else if let Some(b) = line.strip_prefix("branch refs/heads/") {
                 branch_name = Some(b.to_string());
             }
@@ -88,6 +100,7 @@ pub fn remove_worktree(path: &str, cwd: Option<&Path>) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
     use std::process::Command;
 
     fn setup_repo() -> (tempfile::TempDir, std::path::PathBuf) {
@@ -126,6 +139,14 @@ mod tests {
             .unwrap();
         let path = p.to_path_buf();
         (dir, path)
+    }
+
+    fn canonicalize_for_assert(path: &Path) -> String {
+        std::fs::canonicalize(path)
+            .unwrap()
+            .to_string_lossy()
+            .trim_start_matches(r"\\?\")
+            .to_string()
     }
 
     #[test]
@@ -189,7 +210,20 @@ mod tests {
         let wts = list_worktrees(Some(&path)).unwrap();
         assert_eq!(wts.len(), 1);
         assert_eq!(wts[0].name, "feat");
-        assert_eq!(wts[0].path, wt_dir.path().to_str().unwrap());
+        assert_eq!(
+            canonicalize_for_assert(Path::new(&wts[0].path)),
+            canonicalize_for_assert(wt_dir.path())
+        );
+    }
+
+    #[test]
+    fn normalize_git_path_matches_platform_separator() {
+        let path = normalize_git_path("C:/tmp/worktree");
+        if cfg!(windows) {
+            assert_eq!(path, r"C:\tmp\worktree");
+        } else {
+            assert_eq!(path, "C:/tmp/worktree");
+        }
     }
 
     #[test]

@@ -31,8 +31,8 @@ Run `curl … | bash -s -- --help` to see all options.
 iwr -useb https://raw.githubusercontent.com/piotr-lebski/branch/main/install.ps1 | iex
 ```
 
-Installs to `$env:LOCALAPPDATA\branch\bin` and updates your PowerShell profile.
-To pass flags, download and run the script directly:
+Installs to `$env:LOCALAPPDATA\branch\bin` and updates your PowerShell profile. To pass flags, download and run the
+script directly:
 
 ```powershell
 iwr -useb https://raw.githubusercontent.com/piotr-lebski/branch/main/install.ps1 -OutFile install.ps1
